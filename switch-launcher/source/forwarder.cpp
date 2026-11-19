@@ -26,6 +26,22 @@
 
 std::string g_forwarderSelfPath;
 
+#ifdef __SWITCH2__
+
+bool forwarder_create(const std::string &, const std::string &,
+                      const std::string &, char *err, std::size_t errSize)
+{
+    if (err && errSize) snprintf(err, errSize, "HOME forwarders are not supported on Nintendo Switch 2.");
+    return false;
+}
+
+bool forwarder_create_launcher(const std::string &iconImgPath, char *err, std::size_t errSize)
+{
+    return forwarder_create("launcher", "Vita3K", iconImgPath, err, errSize);
+}
+
+#else
+
 namespace {
 
 constexpr const char *kLauncherNro = "sdmc:/switch/vita3k/Vita3K.nro";
@@ -1392,3 +1408,5 @@ bool forwarder_create(const std::string &gameKey, const std::string &name,
 bool forwarder_create_launcher(const std::string &iconImgPath,char *err,std::size_t errSize){
     return forwarder_create("launcher","Vita3K",iconImgPath,err,errSize);
 }
+
+#endif // !__SWITCH2__
