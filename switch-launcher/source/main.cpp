@@ -7266,11 +7266,16 @@ static void firmwareSetupFlow() {
     const char *failure = rc==1?"Could not download the pre-install firmware.":
       rc==2?"Could not download the system firmware.":
       rc==3?"Could not download the firmware system data.":"Could not download a firmware file.";
-    modalMessage("Firmware download failed", {
-      uiText(failure),
-      "",
-      uiText("Make sure the console is online and DNS is reachable."),
-      uiText("Try again, or copy the PUP files from SD, USB, or SMB instead.") });
+    const std::string detail = firmware_last_error();
+    std::vector<std::string> lines = { uiText(failure) };
+    if (!detail.empty()) {
+      lines.push_back("");
+      lines.push_back(detail);
+    }
+    lines.push_back("");
+    lines.push_back(uiText("Make sure the console is online and DNS is reachable."));
+    lines.push_back(uiText("Try again, or copy the PUP files from SD, USB, or SMB instead."));
+    modalMessage("Firmware download failed", lines);
     installed = firmware_is_installed();
     beginScreenFx();
     return false;

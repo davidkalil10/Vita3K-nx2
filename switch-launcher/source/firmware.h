@@ -35,3 +35,7 @@ bool firmware_local_files_present(std::vector<std::string> *missing);
 // byte counts. Returns 0 on success, else the 1-based index of the file that failed.
 int firmware_download_all(void (*progress)(int idx, int total, int pct, const char *label,
                                            double mbps, long long dlnow, long long dltotal));
+
+// Human-readable diagnostic for the most recent firmware_download_all() failure,
+// or an empty string if the last download succeeded.
+std::string firmware_last_error(void);

@@ -66,6 +66,11 @@ bool firmware_is_installed(void) {
 // --- download with per-file progress ---------------------------------------
 static constexpr std::uint64_t MIN_PUP_BYTES = 1ULL * 1024 * 1024;
 static constexpr std::uint64_t MAX_PUP_BYTES = 512ULL * 1024 * 1024;
+static std::string g_lastFirmwareError;
+
+std::string firmware_last_error(void) {
+  return g_lastFirmwareError;
+}
 
 struct Prog {
   void (*cb)(int, int, int, const char *, double, long long, long long);
@@ -240,23 +245,41 @@ static bool activateDownloadedPup(const std::string &temporary, const std::strin
 static bool http_download_file(const std::string &url, const std::string &destPath,
                                std::uint64_t expectedBytes, const char *expectedSha256,
                                Prog *pr) {
-  if (expectedBytes < MIN_PUP_BYTES || expectedBytes > MAX_PUP_BYTES) return false;
+  g_lastFirmwareError.clear();
+  if (expectedBytes < MIN_PUP_BYTES || expectedBytes > MAX_PUP_BYTES) {
+    g_lastFirmwareError = "Invalid expected firmware size.";
+    return false;
+  }
   std::array<u8, SHA256_HASH_SIZE> expectedHash{};
-  if (!parseSha256(expectedSha256, expectedHash)) return false;
+  if (!parseSha256(expectedSha256, expectedHash)) {
+    g_lastFirmwareError = "Invalid firmware SHA-256 pin.";
+    return false;
+  }
   const std::string tmp = destPath + ".part";
   remove(tmp.c_str());
   FILE *f = fopen(tmp.c_str(), "wb");
-  if (!f) return false;
+  if (!f) {
+    g_lastFirmwareError = "Could not create temp file (errno=" + std::to_string(errno) + ").";
+    return false;
+  }
   // Combine curl's small chunks into larger SD writes.
   setvbuf(f, nullptr, _IOFBF, 256 * 1024);
   FileSink sink{f, expectedBytes, 0, false, {}};
   sha256ContextCreate(&sink.hash);
   CURL *c = curl_easy_init();
-  if (!c) { fclose(f); remove(tmp.c_str()); return false; }
+  if (!c) {
+    fclose(f);
+    remove(tmp.c_str());
+    g_lastFirmwareError = "curl_easy_init() failed.";
+    return false;
+  }
+  char curlError[CURL_ERROR_SIZE] = {};
   curl_easy_setopt(c, CURLOPT_URL, url.c_str());
   curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_file_cb);
   curl_easy_setopt(c, CURLOPT_WRITEDATA, &sink);
-  curl_easy_setopt(c, CURLOPT_BUFFERSIZE, 128L * 1024);
+  curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(c, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+  curl_easy_setopt(c, CURLOPT_ERRORBUFFER, curlError);
   // Sony serves these immutable blobs directly over HTTP; its CDN certificate
   // does not match these legacy hostnames. Redirects are disabled and every byte
   // is protected by an exact trusted size + SHA-256 content pin below.
@@ -282,14 +305,44 @@ static bool http_download_file(const std::string &url, const std::string &destPa
   curl_easy_cleanup(c);
   std::array<u8, SHA256_HASH_SIZE> actualHash{};
   sha256ContextGetHash(&sink.hash, actualHash.data());
-  bool ok = (rc == CURLE_OK) && (code >= 200 && code < 300) && !sink.failed &&
-            sink.written == expectedBytes && actualHash == expectedHash;
-  if (fflush(f) != 0 || fsync(fileno(f)) != 0) ok = false;
-  if (fclose(f) != 0) ok = false;
-  if (ok && R_FAILED(fsdevCommitDevice("sdmc"))) ok = false;
-  if (ok && !looksLikePup(tmp)) ok = false;
+  bool ok = true;
+  if (rc != CURLE_OK) {
+    ok = false;
+    g_lastFirmwareError = "curl(" + std::to_string(static_cast<int>(rc)) + "): " +
+                          (curlError[0] ? std::string(curlError) : std::string(curl_easy_strerror(rc)));
+  } else if (code < 200 || code >= 300) {
+    ok = false;
+    g_lastFirmwareError = "Server returned HTTP " + std::to_string(code) + ".";
+  } else if (sink.failed || sink.written != expectedBytes) {
+    ok = false;
+    g_lastFirmwareError = "Incomplete transfer (" + std::to_string(sink.written) + "/" +
+                          std::to_string(expectedBytes) + " bytes).";
+  } else if (actualHash != expectedHash) {
+    ok = false;
+    g_lastFirmwareError = "SHA-256 verification failed.";
+  }
+  if (fflush(f) != 0 || fsync(fileno(f)) != 0) {
+    if (ok) g_lastFirmwareError = "SD card flush/sync failed (errno=" + std::to_string(errno) + ").";
+    ok = false;
+  }
+  if (fclose(f) != 0) {
+    if (ok) g_lastFirmwareError = "SD card close failed (errno=" + std::to_string(errno) + ").";
+    ok = false;
+  }
+  if (ok && R_FAILED(fsdevCommitDevice("sdmc"))) {
+    g_lastFirmwareError = "SD card commit failed.";
+    ok = false;
+  }
+  if (ok && !looksLikePup(tmp)) {
+    g_lastFirmwareError = "Downloaded file is not a valid SCEUF PUP.";
+    ok = false;
+  }
   if (!ok) { remove(tmp.c_str()); return false; }
-  if (!activateDownloadedPup(tmp, destPath, expectedBytes)) { remove(tmp.c_str()); return false; }
+  if (!activateDownloadedPup(tmp, destPath, expectedBytes)) {
+    g_lastFirmwareError = "Could not move downloaded PUP into install/.";
+    remove(tmp.c_str());
+    return false;
+  }
   return true;
 }
 
