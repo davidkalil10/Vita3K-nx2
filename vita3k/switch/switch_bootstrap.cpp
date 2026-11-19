@@ -58,7 +58,12 @@ constexpr u64 SWITCH_HEAP_ALIGNMENT = 0x200000; // svcSetHeapSize: 2 MiB granula
 // memory pool, dynarmic's JIT code memory and NVK's buffer backing store all
 // come from it, so memory withheld here is simply denied to the guest and the
 // GPU. This reserve only has to cover the kernel objects libnx creates for us.
+#ifdef __SWITCH2__
+// Leave headroom for OunceVK Vulkan/NVK allocations and kaiHEN RO JIT staging.
+constexpr u64 SWITCH_EXTERNAL_RESERVE = 0x10000000; // 256 MiB
+#else
 constexpr u64 SWITCH_EXTERNAL_RESERVE = 0x2000000; // 32 MiB
+#endif
 constexpr u64 SWITCH_EXPANDED_MEMORY_TOTAL = 0x140000000; // 5 GiB: an expanded-memory unit
 constexpr u64 SWITCH_MIN_USABLE_HOST_HEAP = 0x50000000; // 1.25 GiB beyond libnx's prefix
 

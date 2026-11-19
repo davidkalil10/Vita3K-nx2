@@ -3,7 +3,7 @@
 #include <cstdint>
 
 namespace switch_overlay {
-#ifdef __SWITCH__
+#if defined(__SWITCH__) && !defined(__SWITCH2__)
 void start();
 void stop();
 void frame(uint32_t width, uint32_t height, uint8_t api);

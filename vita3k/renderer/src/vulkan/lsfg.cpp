@@ -19,7 +19,9 @@
 
 #include "lsfg_bridge.h"
 
-#ifdef __SWITCH__
+#ifdef __SWITCH2__
+extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance, const char *pName);
+#elif defined(__SWITCH__)
 extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance instance, const char *pName);
 #endif
 
@@ -351,7 +353,11 @@ vk::Result present(VKState& state, const vk::PresentInfoKHR& present_info)
         .device = static_cast<VkDevice>(state.device),
         .queue = queue,
         .queue_family_index = state.general_family_index,
+#ifdef __SWITCH2__
+        .get_instance_proc_addr = &::vkGetInstanceProcAddr,
+#else
         .get_instance_proc_addr = &::vk_icdGetInstanceProcAddr,
+#endif
         .swapchain = s_state.swapchain,
         .extent = s_state.extent,
         .swapchain_images = s_state.images.data(),

@@ -54,12 +54,17 @@
 #include <MoltenVK/mvk_vulkan.h>
 #endif
 
-#ifdef __SWITCH__
+#ifdef __SWITCH2__
+// Switch 2 (OunceVK) exposes the standard loaderless Vulkan entrypoint.
+extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance, const char *pName);
+#elif defined(__SWITCH__)
 // Enter native NVK through its ICD entry point, as the other Switch ports do.
 // Mesa's public loaderless vkGetInstanceProcAddr is the Zink-facing path and
 // links the lite Vulkan instance runtime, which assumes that Gallium already
 // owns the GLSL type singleton. Native Vita3K does not have that owner.
 extern "C" VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(VkInstance instance, const char *pName);
+#endif
+#ifdef __SWITCH__
 #include <xxhash.h>
 // libnx cache maintenance, declared directly to keep <switch.h> macros out.
 extern "C" {
@@ -546,6 +551,9 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 
         if (!detect_patch_bcn(&texture_cache.support_dxt))
             return false;
+#elif defined(__SWITCH2__)
+        // OunceVK is statically linked on Switch 2.
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(&::vkGetInstanceProcAddr);
 #elif defined(__SWITCH__)
         // The Mesa NVK ICD is statically linked (no shared object to dlopen).
         VULKAN_HPP_DEFAULT_DISPATCHER.init(&::vk_icdGetInstanceProcAddr);
@@ -2195,6 +2203,8 @@ renderer::VulkanDeviceInfo renderer::enumerate_vulkan_devices(const std::string 
             return info;
 
         dispatch.init(vk_get_instance_proc_addr);
+#elif defined(__SWITCH2__)
+        dispatch.init(&::vkGetInstanceProcAddr);
 #elif defined(__SWITCH__)
         dispatch.init(&::vk_icdGetInstanceProcAddr);
 #else

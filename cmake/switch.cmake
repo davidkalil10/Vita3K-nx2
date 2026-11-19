@@ -20,9 +20,15 @@
 # include/lib visibility.
 # ---------------------------------------------------------------------------
 
-message(STATUS "================================================================")
-message(STATUS " Vita3K: configuring for Nintendo Switch (libnx / devkitA64)")
-message(STATUS "================================================================")
+if(NINTENDO_SWITCH2)
+	message(STATUS "================================================================")
+	message(STATUS " Vita3K: configuring for Nintendo Switch 2 (libounce / OunceVK)")
+	message(STATUS "================================================================")
+else()
+	message(STATUS "================================================================")
+	message(STATUS " Vita3K: configuring for Nintendo Switch (libnx / devkitA64)")
+	message(STATUS "================================================================")
+endif()
 
 # DEVKITPRO is exported by the aarch64-none-elf-cmake wrapper; fall back to the
 # canonical install path if a bare cmake was used with the toolchain file.
@@ -35,26 +41,49 @@ else()
 endif()
 
 set(SWITCH_PORTLIBS "${DEVKITPRO}/portlibs/switch")
-set(LIBNX          "${DEVKITPRO}/libnx")
+if(NINTENDO_SWITCH2)
+	set(SWITCH2_PORTLIBS "${DEVKITPRO}/portlibs/switch2")
+	set(LIBOUNCE         "${DEVKITPRO}/libounce")
+	set(SWITCH2_FFMPEG_DIR "" CACHE PATH "Clean Switch 2 FFmpeg prefix (--disable-nvtegra)")
 
-# Make the portlib + libnx headers/libs visible to plain find_path/find_library
-# and to targets that just #include <...> without going through a portlib target.
-include_directories(SYSTEM "${SWITCH_PORTLIBS}/include" "${LIBNX}/include")
-link_directories("${SWITCH_PORTLIBS}/lib" "${LIBNX}/lib")
+	# Prioritize Switch 2 portlibs (OunceVK, libkaihen) and libounce ahead of
+	# generic switch portlibs; never add libnx on Switch 2.
+	if(SWITCH2_FFMPEG_DIR)
+		include_directories(BEFORE SYSTEM "${SWITCH2_FFMPEG_DIR}/include")
+		link_directories(BEFORE "${SWITCH2_FFMPEG_DIR}/lib")
+	endif()
+	include_directories(BEFORE SYSTEM "${SWITCH2_PORTLIBS}/include" "${LIBOUNCE}/include")
+	include_directories(SYSTEM "${SWITCH_PORTLIBS}/include")
+	link_directories(BEFORE "${SWITCH2_PORTLIBS}/lib" "${LIBOUNCE}/lib")
+	link_directories("${SWITCH_PORTLIBS}/lib")
 
-# Project-wide Switch identification.
-#
-# IMPORTANT: __SWITCH__ and the arch flags normally come from the NintendoSwitch
-# platform file via CMAKE_CXX_FLAGS, but passing -DCMAKE_CXX_FLAGS=... on the
-# command line (e.g. for -pipe) *replaces* that value and silently drops them.
-# Re-assert them here so every __SWITCH__ guard works and the correct Cortex-A57
-# TLS/crypto codegen is used regardless of how CMAKE_*_FLAGS was set.
-add_compile_definitions(__SWITCH__ VITA3K_SWITCH)
-add_compile_options(
-	-march=armv8-a+crc+crypto
-	-mtune=cortex-a57
-	-mtp=soft
-	-ftls-model=local-exec)
+	add_compile_definitions(__SWITCH__ __SWITCH2__ VITA3K_SWITCH)
+	add_compile_options(
+		-mcpu=cortex-a78c+crypto
+		-mtp=soft
+		-ftls-model=local-exec)
+else()
+	set(LIBNX "${DEVKITPRO}/libnx")
+
+	# Make the portlib + libnx headers/libs visible to plain find_path/find_library
+	# and to targets that just #include <...> without going through a portlib target.
+	include_directories(SYSTEM "${SWITCH_PORTLIBS}/include" "${LIBNX}/include")
+	link_directories("${SWITCH_PORTLIBS}/lib" "${LIBNX}/lib")
+
+	# Project-wide Switch identification.
+	#
+	# IMPORTANT: __SWITCH__ and the arch flags normally come from the NintendoSwitch
+	# platform file via CMAKE_CXX_FLAGS, but passing -DCMAKE_CXX_FLAGS=... on the
+	# command line (e.g. for -pipe) *replaces* that value and silently drops them.
+	# Re-assert them here so every __SWITCH__ guard works and the correct Cortex-A57
+	# TLS/crypto codegen is used regardless of how CMAKE_*_FLAGS was set.
+	add_compile_definitions(__SWITCH__ VITA3K_SWITCH)
+	add_compile_options(
+		-march=armv8-a+crc+crypto
+		-mtune=cortex-a57
+		-mtp=soft
+		-ftls-model=local-exec)
+endif()
 
 # devkitPro's NintendoSwitch platform uses -O2 for Release builds. Vita3K's
 # CPU translation, dispatch, and renderer hot paths benefit from the regular
@@ -134,9 +163,14 @@ if(_switch_openssl_no_asm)
 endif()
 file(READ "${SWITCH_OPENSSL_DIR}/.vita3k-switch-build" _switch_openssl_build_id)
 string(STRIP "${_switch_openssl_build_id}" _switch_openssl_build_id)
-if(NOT _switch_openssl_build_id STREQUAL "openssl-4.0.1 aarch64-none-elf armv8-crypto-v1")
+if(NINTENDO_SWITCH2)
+	set(_expected_openssl_build_id "openssl-4.0.1 aarch64-none-elf switch2-v1")
+else()
+	set(_expected_openssl_build_id "openssl-4.0.1 aarch64-none-elf armv8-crypto-v1")
+endif()
+if(NOT _switch_openssl_build_id STREQUAL "${_expected_openssl_build_id}")
 	message(FATAL_ERROR
-		"Switch OpenSSL is outdated. Rebuild with scripts/prepare-switch-openssl.sh.")
+		"Switch OpenSSL is outdated (found '${_switch_openssl_build_id}', expected '${_expected_openssl_build_id}'). Rebuild with scripts/prepare-switch-openssl.sh.")
 endif()
 message(STATUS "Switch: using OpenSSL 4.0.1 at ${SWITCH_OPENSSL_DIR}")
 
@@ -146,16 +180,63 @@ message(STATUS "Switch: using OpenSSL 4.0.1 at ${SWITCH_OPENSSL_DIR}")
 
 # Features that make no sense / are unavailable on Switch.
 set(USE_DISCORD_RICH_PRESENCE OFF CACHE BOOL "" FORCE)  # x86_64/APPLE only anyway
-# The port is now past early bring-up. Match the Ticu Release configuration and
-# let GCC optimize across Vita3K's many static libraries; this particularly
-# helps the small CPU/JIT/HLE helpers on the serial guest execution path.
-set(USE_LTO RELEASE_ONLY CACHE STRING "" FORCE)
+if(NINTENDO_SWITCH2)
+	# Keep Switch 2 bring-up builds fast and within 16 GiB CI runner RAM while
+	# retaining -O3 and clean symbol maps for verify_switch2_package.py.
+	set(USE_LTO OFF CACHE STRING "" FORCE)
+else()
+	# The port is now past early bring-up. Match the Ticu Release configuration and
+	# let GCC optimize across Vita3K's many static libraries; this particularly
+	# helps the small CPU/JIT/HLE helpers on the serial guest execution path.
+	set(USE_LTO RELEASE_ONLY CACHE STRING "" FORCE)
 
-# CMake selects -flto=auto for GCC, but Ninja does not provide GNU make's
-# jobserver and devkitA64 consequently runs the LTRANS partitions serially.
-# Bound the Release link to eight workers explicitly. This changes build
-# parallelism only; the objects remain regular GCC LTO objects.
-add_link_options("$<$<CONFIG:Release>:-flto=8>")
+	# CMake selects -flto=auto for GCC, but Ninja does not provide GNU make's
+	# jobserver and devkitA64 consequently runs the LTRANS partitions serially.
+	# Bound the Release link to eight workers explicitly. This changes build
+	# parallelism only; the objects remain regular GCC LTO objects.
+	add_link_options("$<$<CONFIG:Release>:-flto=8>")
+endif()
+
+if(NINTENDO_SWITCH2)
+	# Switch 2 uses OunceVK (Mesa NVK Vulkan 1.4 + Zink EGL/GL/GLES3) and
+	# libkaihen directly from $DEVKITPRO/portlibs/switch2.
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(OUNCE_VULKAN REQUIRED vulkan)
+	pkg_check_modules(OUNCE_EGL REQUIRED egl)
+	pkg_check_modules(OUNCE_GL QUIET gl)
+
+	set(SWITCH_VULKAN_INCLUDE_DIR "${SWITCH2_PORTLIBS}/include" CACHE INTERNAL
+		"OunceVK include directory" FORCE)
+
+	set(_switch2_gfx_libs)
+	if(OUNCE_GL_FOUND)
+		list(APPEND _switch2_gfx_libs ${OUNCE_GL_STATIC_LIBRARIES})
+	endif()
+	list(APPEND _switch2_gfx_libs ${OUNCE_EGL_STATIC_LIBRARIES} ${OUNCE_VULKAN_STATIC_LIBRARIES})
+	list(REMOVE_DUPLICATES _switch2_gfx_libs)
+	set(SWITCH_VULKAN_LINK_LIBS
+		-Wl,--start-group
+		${_switch2_gfx_libs}
+		-Wl,--end-group
+		CACHE INTERNAL "OunceVK graphics link line" FORCE)
+	set(SWITCH_VULKAN_LINK_DEPENDS "" CACHE INTERNAL "OunceVK relink inputs" FORCE)
+
+	# Locate kaiHEN's JIT provider (kaihen-jit.o or libkaihen.a) so libounce's
+	# weak __nx_jit_* hooks bind to RO's persistent alias backend.
+	if(EXISTS "${SWITCH2_PORTLIBS}/lib/kaihen-jit.o")
+		set(SWITCH2_KAIHEN_JIT_LIB "${SWITCH2_PORTLIBS}/lib/kaihen-jit.o" CACHE INTERNAL
+			"kaiHEN JIT provider object" FORCE)
+	elseif(EXISTS "${SWITCH2_PORTLIBS}/lib/libkaihen.a")
+		set(SWITCH2_KAIHEN_JIT_LIB "${SWITCH2_PORTLIBS}/lib/libkaihen.a" CACHE INTERNAL
+			"kaiHEN JIT provider archive" FORCE)
+	else()
+		set(SWITCH2_KAIHEN_JIT_LIB "-lkaihen" CACHE INTERNAL
+			"kaiHEN JIT provider flag" FORCE)
+	endif()
+
+	message(STATUS "Switch 2: using OunceVK at ${SWITCH2_PORTLIBS} (vulkan=${OUNCE_VULKAN_VERSION}, kaihen=${SWITCH2_KAIHEN_JIT_LIB})")
+	return()
+endif()
 
 # ---------------------------------------------------------------------------
 # Unified Mesa NVK/Nouveau/Zink static graphics SDK

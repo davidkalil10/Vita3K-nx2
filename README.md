@@ -1,3 +1,24 @@
+# Vita3K-nx2 (Nintendo Switch 2 Port)
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20this%20project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/davidkalil10)
+
+> **Nintendo Switch 2 Port (`ounce-devkit` / `libounce` + `OunceVK` + `kaiHEN` JIT):** Adapted and maintained by **David Kalil Braga** ([@davidkalil10](https://github.com/davidkalil10)).
+> Special thanks to **[@NaGaa95](https://github.com/NaGaa95)** (creator of **[Vita3K-nx](https://github.com/NaGaa95/Vita3K-nx)**) and the **[Vita3K team](https://github.com/Vita3K/Vita3K)** for the original emulator.
+
+## Nintendo Switch 2 Highlights
+- **Native Vulkan 1.4 via `OunceVK`** (Mesa NVK + Zink/EGL in `ounce-devkit`).
+- **ARM64 JIT (`Dynarmic`) via `kaiHEN` (`-lkaihen`):** Uses `kaihenJitPublishRanges` to publish compiled code slices through `RO`'s persistent alias backend.
+- **Clean Switch 2 Dependencies:** Cross-compiled OpenSSL 4.0.1 and FFmpeg 7.1 (`--disable-nvtegra`, `cortex-a78c+crypto`) linked exclusively against `libounce` and `portlibs/switch2`.
+
+## Support
+If you find **Vita3K-nx2** and our Nintendo Switch 2 homebrew ports useful, consider buying me a coffee to support continued development and maintenance:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/davidkalil10)
+
+👉 **[https://ko-fi.com/davidkalil10](https://ko-fi.com/davidkalil10)**
+
+---
+
 # Vita3K
 
 [![C/C++ CI](https://github.com/Vita3K/Vita3K/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/Vita3K/Vita3K/actions/workflows/c-cpp.yml)

@@ -248,9 +248,13 @@ if(NOT ANDROID AND NOT SWITCH)
 endif()
 
 if(SWITCH)
-	# Link libnx last and package the ELF into a .nro. The NintendoSwitch platform
-	# already appends -lnx via NX_STANDARD_LIBRARIES, but the renderer/JIT also use
-	# libnx APIs (nwindow, jit, applet), so make the dependency explicit.
+	# Link libnx (or libounce's libnx.a on Switch 2) last and package the ELF into a .nro.
+	if(NINTENDO_SWITCH2)
+		if(SWITCH2_KAIHEN_JIT_LIB)
+			target_link_libraries(vita3k PRIVATE "${SWITCH2_KAIHEN_JIT_LIB}")
+		endif()
+		target_link_options(vita3k PRIVATE -Wl,-Map=${CMAKE_BINARY_DIR}/Vita3K-switch2.map)
+	endif()
 	target_link_libraries(vita3k PRIVATE nx)
 	if(SWITCH_VULKAN_LINK_DEPENDS)
 		set_property(TARGET vita3k APPEND PROPERTY LINK_DEPENDS ${SWITCH_VULKAN_LINK_DEPENDS})
@@ -270,17 +274,25 @@ if(SWITCH)
 		COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/vita3k/icons" "${VITA3K_SWITCH_ROMFS}/icons"
 		COMMENT "Staging Switch romfs (data + builtin shaders + icons)")
 
+	if(NINTENDO_SWITCH2)
+		set(VITA3K_NACP_AUTHOR "Vita3K / NaGaa95 / David Kalil Braga")
+		set(VITA3K_NRO_OUTPUT "${CMAKE_BINARY_DIR}/Vita3K-switch2.nro")
+	else()
+		set(VITA3K_NACP_AUTHOR "Vita3K team")
+		set(VITA3K_NRO_OUTPUT "${CMAKE_BINARY_DIR}/Vita3K.nro")
+	endif()
+
 	nx_generate_nacp(
 		OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/vita3k.nacp"
 		NAME "Vita3K"
-		AUTHOR "Vita3K team"
+		AUTHOR "${VITA3K_NACP_AUTHOR}"
 		VERSION "${VITA3K_APP_VERSION}")
 
 	nx_create_nro(vita3k
 		NACP "${CMAKE_CURRENT_BINARY_DIR}/vita3k.nacp"
 		ICON "${CMAKE_CURRENT_SOURCE_DIR}/Vita3K.jpg"  # elf2nro requires a 256x256 JPEG
 		ROMFS "${VITA3K_SWITCH_ROMFS}"
-		OUTPUT "${CMAKE_BINARY_DIR}/Vita3K.nro")
+		OUTPUT "${VITA3K_NRO_OUTPUT}")
 endif()
 if(USE_DISCORD_RICH_PRESENCE)
 	target_link_libraries(vita3k PRIVATE discord-rpc)

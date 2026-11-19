@@ -293,7 +293,9 @@ if(SWITCH)
 	# from this driver), so no loader/dlopen is involved.
 	if(SWITCH_VULKAN_LINK_LIBS)
 		target_link_libraries(vulkan INTERFACE ${SWITCH_VULKAN_LINK_LIBS})
-		add_dependencies(vulkan vita3k_mesa_vulkan_local)
+		if(TARGET vita3k_mesa_vulkan_local)
+			add_dependencies(vulkan vita3k_mesa_vulkan_local)
+		endif()
 	endif()
 endif()
 

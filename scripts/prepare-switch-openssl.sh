@@ -9,14 +9,15 @@ OPENSSL_SHA256=2db3f3a0d6ea4b59e1f094ace2c8cd536dffb87cdc39084c5afa1e6f7f37dd09
 OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
 BUILD_ROOT="${ROOT}/build-switch-deps"
 CHECK_ONLY=0
+SWITCH2=0
 
 usage() {
 	cat <<EOF
-Usage: $0 [--check] [--build-root DIR]
+Usage: $0 [--check] [--switch2] [--build-root DIR]
 
 Downloads, verifies, and cross-builds the pinned OpenSSL ${OPENSSL_VERSION}
-static libraries for Nintendo Switch. The resulting SWITCH_OPENSSL_DIR is:
-  <build-root>/openssl-${OPENSSL_VERSION}
+static libraries for Nintendo Switch / Switch 2. The resulting SWITCH_OPENSSL_DIR is:
+  <build-root>/openssl-${OPENSSL_VERSION} (or openssl-${OPENSSL_VERSION}-switch2 with --switch2)
 EOF
 }
 
@@ -24,6 +25,10 @@ while (($#)); do
 	case "$1" in
 		--check)
 			CHECK_ONLY=1
+			shift
+			;;
+		--switch2)
+			SWITCH2=1
 			shift
 			;;
 		--build-root)
@@ -44,11 +49,16 @@ while (($#)); do
 done
 
 BUILD_ROOT="$(cd -- "$(dirname -- "${BUILD_ROOT}")" && pwd)/$(basename -- "${BUILD_ROOT}")"
-SOURCE_DIR="${BUILD_ROOT}/openssl-${OPENSSL_VERSION}"
+if ((SWITCH2)); then
+	SOURCE_DIR="${BUILD_ROOT}/openssl-${OPENSSL_VERSION}-switch2"
+	BUILD_ID="openssl-${OPENSSL_VERSION} aarch64-none-elf switch2-v1"
+else
+	SOURCE_DIR="${BUILD_ROOT}/openssl-${OPENSSL_VERSION}"
+	BUILD_ID="openssl-${OPENSSL_VERSION} aarch64-none-elf armv8-crypto-v1"
+fi
 ARCHIVE="${BUILD_ROOT}/openssl-${OPENSSL_VERSION}.tar.gz"
 COMPAT_DIR="${ROOT}/cmake/switch/openssl-compat"
 STAMP="${SOURCE_DIR}/.vita3k-switch-build"
-BUILD_ID="openssl-${OPENSSL_VERSION} aarch64-none-elf armv8-crypto-v1"
 
 ensure_directory() {
 	[[ -d "$1" ]] || mkdir "$1"
@@ -129,14 +139,25 @@ fi
 # OpenSSL's unix seed backend probes a weak getentropy symbol. Vita3K supplies
 # it with Horizon's csrng service, giving TLS/key generation real OS entropy.
 # Providers are built into libcrypto because Horizon has no dlopen modules.
-perl ./Configure linux-aarch64 \
-	no-shared no-tests no-apps no-docs no-dso no-quic \
-	no-module no-ui-console \
-	--cross-compile-prefix=aarch64-none-elf- \
-	--with-rand-seed=getrandom \
-	-D__SWITCH__ -D_GNU_SOURCE -Dtimezone=_timezone -pipe -fPIE \
-	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec \
-	-I"${DEVKITPRO}/libnx/include" -I"${COMPAT_DIR}"
+if ((SWITCH2)); then
+	perl ./Configure linux-aarch64 \
+		no-shared no-tests no-apps no-docs no-dso no-quic \
+		no-module no-ui-console \
+		--cross-compile-prefix=aarch64-none-elf- \
+		--with-rand-seed=getrandom \
+		-D__SWITCH__ -D__SWITCH2__ -D_GNU_SOURCE -Dtimezone=_timezone -pipe -fPIE \
+		-mcpu=cortex-a78c+crypto -mtp=soft -ftls-model=local-exec \
+		-I"${DEVKITPRO}/libounce/include" -I"${COMPAT_DIR}"
+else
+	perl ./Configure linux-aarch64 \
+		no-shared no-tests no-apps no-docs no-dso no-quic \
+		no-module no-ui-console \
+		--cross-compile-prefix=aarch64-none-elf- \
+		--with-rand-seed=getrandom \
+		-D__SWITCH__ -D_GNU_SOURCE -Dtimezone=_timezone -pipe -fPIE \
+		-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec \
+		-I"${DEVKITPRO}/libnx/include" -I"${COMPAT_DIR}"
+fi
 
 JOBS="${VITA3K_BUILD_JOBS:-}"
 if [[ -z "${JOBS}" ]]; then
