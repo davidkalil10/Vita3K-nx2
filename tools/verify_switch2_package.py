@@ -49,7 +49,7 @@ def verify_aset(raw: bytes) -> None:
         raise ValueError(f"Unexpected NACP size: {nacp_size}")
 
 
-def verify_link_map(text: str) -> None:
+def verify_link_map(text: str, check_jit: bool = True) -> None:
     text = text.replace("\\", "/")
     forbidden = [
         "/libnx/",
@@ -72,7 +72,7 @@ def verify_link_map(text: str) -> None:
     for path in ["/libounce/lib/", "/portlibs/switch2/lib/"]:
         if path not in text:
             raise ValueError("Missing Switch 2 dependency in link map: " + path)
-    if "__nx_jit_map_code" not in text:
+    if check_jit and "__nx_jit_map_code" not in text:
         raise ValueError("Missing kaiHEN JIT provider (__nx_jit_map_code) in link map")
 
 
@@ -80,14 +80,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("nro", type=Path)
     parser.add_argument("--link-map", type=Path, required=True)
+    parser.add_argument("--no-jit-check", action="store_true")
     args = parser.parse_args()
     raw = args.nro.read_bytes()
     verify_switch2_startup(raw)
     verify_aset(raw)
-    verify_link_map(args.link_map.read_text(errors="replace"))
+    verify_link_map(args.link_map.read_text(errors="replace"), check_jit=not args.no_jit_check)
+    jit_note = "kaiHEN JIT linked; " if not args.no_jit_check else ""
     print(
         f"PASS: Switch 2 OUN0 platform=2 version=1 ({len(raw):,} bytes); "
-        "kaiHEN JIT linked; no Switch 1 startup/graphics/nvtegra libraries"
+        f"{jit_note}no Switch 1 startup/graphics/nvtegra libraries"
     )
     return 0
 

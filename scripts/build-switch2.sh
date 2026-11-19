@@ -129,11 +129,26 @@ cmake -B "$BUILD_DIR" -G Ninja \
   -DSWITCH_OPENSSL_DIR="$OPENSSL_DIR" \
   -DSWITCH2_FFMPEG_DIR="$FFMPEG_PREFIX"
 
-echo "==> Building Vita3K-switch2.nro..."
+echo "==> Building Vita3K-switch2 core NRO..."
 cmake --build "$BUILD_DIR" -j"$JOBS"
 
 python3 "$ROOT_DIR/tools/verify_switch2_package.py" \
   "$BUILD_DIR/Vita3K-switch2.nro" \
   --link-map "$BUILD_DIR/Vita3K-switch2.map"
 
-printf '\nBuilt: %s\n' "$BUILD_DIR/Vita3K-switch2.nro"
+cp -f "$BUILD_DIR/Vita3K-switch2.nro" "$BUILD_DIR/Vita3K-core-switch2.nro"
+
+echo "==> Bundling Switch 2 core into graphical switch-launcher..."
+mkdir -p "$ROOT_DIR/switch-launcher/romfs/emu"
+cp -f "$BUILD_DIR/Vita3K-core-switch2.nro" "$ROOT_DIR/switch-launcher/romfs/emu/Vita3K.nro"
+
+echo "==> Building Vita3K-switch2 graphical launcher NRO..."
+make -C "$ROOT_DIR/switch-launcher" SWITCH2=1 -j"$JOBS"
+
+python3 "$ROOT_DIR/tools/verify_switch2_package.py" \
+  "$ROOT_DIR/switch-launcher/Vita3K-switch2.nro" \
+  --link-map "$ROOT_DIR/switch-launcher/Vita3K-switch2.map" \
+  --no-jit-check
+
+cp -f "$ROOT_DIR/switch-launcher/Vita3K-switch2.nro" "$BUILD_DIR/Vita3K-switch2.nro"
+printf '\nBuilt self-contained Switch 2 launcher+core: %s\n' "$BUILD_DIR/Vita3K-switch2.nro"

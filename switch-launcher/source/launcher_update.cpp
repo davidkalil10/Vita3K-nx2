@@ -27,12 +27,21 @@
 
 namespace
 {
+#ifdef __SWITCH2__
+	constexpr char kLatestReleaseUrl[] =
+		"https://api.github.com/repos/davidkalil10/Vita3K-nx2/releases/latest";
+	constexpr char kReleaseAssetPrefix[] =
+		"https://github.com/davidkalil10/Vita3K-nx2/releases/download/";
+	constexpr char kDefaultLauncherPath[] = "sdmc:/switch/vita3k/Vita3K-switch2.nro";
+	constexpr char kExpectedAssetName[] = "Vita3K-switch2.nro";
+#else
 	constexpr char kLatestReleaseUrl[] =
 		"https://api.github.com/repos/NaGaa95/Vita3K-nx/releases/latest";
 	constexpr char kReleaseAssetPrefix[] =
 		"https://github.com/NaGaa95/Vita3K-nx/releases/download/";
 	constexpr char kDefaultLauncherPath[] = "sdmc:/switch/vita3k/Vita3K.nro";
 	constexpr char kExpectedAssetName[] = "Vita3K.nro";
+#endif
 	constexpr std::size_t kMaxReleaseResponse = 2 * 1024 * 1024;
 	constexpr std::uint64_t kMinimumNroSize = 1024 * 1024;
 	constexpr std::uint64_t kMaximumNroSize = 1024ULL * 1024 * 1024;

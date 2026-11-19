@@ -9,7 +9,11 @@ include(FetchContent)
 set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "" FORCE)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "" FORCE)
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+if(NINTENDO_SWITCH2)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
+else()
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+endif()
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -28,6 +32,18 @@ FetchContent_Declare(libsmb2
 FetchContent_MakeAvailable(libsmb2)
 target_compile_options(smb2 PRIVATE -UNEED_READV -UNEED_WRITEV)
 target_compile_definitions(smb2 PRIVATE AES128_ECB_encrypt=smb2_AES128_ECB_encrypt)
+
+if(NINTENDO_SWITCH2)
+    file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/include/smb2")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/include")
+    file(COPY "${libsmb2_SOURCE_DIR}/include/smb2"
+        DESTINATION "${CMAKE_BINARY_DIR}/include")
+    add_library(vita3k_launcher_storage_dependencies INTERFACE)
+    target_link_libraries(vita3k_launcher_storage_dependencies INTERFACE smb2)
+    add_library(Vita3KLauncher::StorageDependencies ALIAS
+        vita3k_launcher_storage_dependencies)
+    return()
+endif()
 
 # FAT/exFAT and NTFS cover the import browser. NTFS is enabled on its own:
 # USBHSFS_GPL would also pull in EXT2/3/4. The obsolete SX OS backend stays

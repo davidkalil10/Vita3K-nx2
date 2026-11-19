@@ -1318,6 +1318,13 @@ bool forwarder_create(const std::string &gameKey, const std::string &name,
                       const std::string &iconImgPath, char *err, std::size_t errSize)
 {
     if (err && errSize) err[0] = '\0';
+#ifdef __SWITCH2__
+    (void)gameKey;
+    (void)name;
+    (void)iconImgPath;
+    if (err && errSize) snprintf(err, errSize, "HOME forwarders are not supported on Nintendo Switch 2.");
+    return false;
+#endif
 
     const bool validKey = !gameKey.empty() && gameKey.size() <= 255 &&
         std::all_of(gameKey.begin(), gameKey.end(), [](unsigned char c) {

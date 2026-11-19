@@ -13,11 +13,21 @@ $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/de
 endif
 
 TOPDIR ?= $(CURDIR)
+SWITCH2 ?= 0
+ifeq ($(SWITCH2),1)
+include $(DEVKITPRO)/libounce/switch2_rules
+else
 include $(DEVKITPRO)/libnx/switch_rules
+endif
 include $(TOPDIR)/version.mk
 
+ifeq ($(SWITCH2),1)
+TARGET		:=	Vita3K-switch2
+BUILD		:=	build-switch2
+else
 TARGET		:=	Vita3K
 BUILD		:=	build
+endif
 SOURCES		:=	source
 DATA		:=	data
 INCLUDES	:=	include ../vita3k/touch/include
@@ -27,11 +37,17 @@ ROMFS		:=	romfs		# launcher assets plus the bundled emulator (romfs/emu/Vita3K.n
 # inside the launcher directory so a normal checkout is self-contained.  The
 # paths remain overridable for CI or for developers sharing a compatible cache.
 STORAGE_DEPS_SOURCE ?= $(TOPDIR)/dependencies
+ifeq ($(SWITCH2),1)
+STORAGE_BUILD ?= $(STORAGE_DEPS_SOURCE)/build-switch2
+STORAGE_TOOLCHAIN ?= $(DEVKITPRO)/libounce/cmake/Switch2.cmake
+STORAGE_CMAKE_ARGS ?= -DNINTENDO_SWITCH2=ON
+else
 STORAGE_BUILD ?= $(STORAGE_DEPS_SOURCE)/build
-STORAGE_CMAKE ?= cmake
-STORAGE_CMAKE_GENERATOR ?= Ninja
 STORAGE_TOOLCHAIN ?= $(DEVKITPRO)/cmake/Switch.cmake
 STORAGE_CMAKE_ARGS ?=
+endif
+STORAGE_CMAKE ?= cmake
+STORAGE_CMAKE_GENERATOR ?= Ninja
 
 STORAGE_CONFIG_STAMP := $(STORAGE_BUILD)/.vita3k-storage-configured
 STORAGE_BUILD_STAMP := $(STORAGE_BUILD)/.vita3k-storage-built
@@ -42,16 +58,43 @@ STORAGE_INCLUDE := $(STORAGE_BUILD)/include
 LIBSMB2_ARCHIVE := $(STORAGE_BUILD)/_deps/libsmb2-build/lib/libsmb2.a
 LIBUSBHSFS_ARCHIVE := $(STORAGE_BUILD)/_deps/libusbhsfs-build/liblibusbhsfs.a
 LIBNTFS3G_ARCHIVE := $(PORTLIBS)/lib/libntfs-3g.a
+ifeq ($(SWITCH2),1)
+STORAGE_LIBS := $(LIBSMB2_ARCHIVE)
+STORAGE_TARGETS := smb2
+else
 STORAGE_LIBS := $(LIBSMB2_ARCHIVE) $(LIBUSBHSFS_ARCHIVE) $(LIBNTFS3G_ARCHIVE)
+STORAGE_TARGETS := smb2 libusbhsfs
+endif
 
 APP_TITLE	:=	Vita3K
+ifeq ($(SWITCH2),1)
+APP_AUTHOR	:=	naga / David Kalil Braga
+else
 APP_AUTHOR	:=	naga
+endif
 APP_VERSION	:=	$(VITA3K_NX_VERSION)
 
 EMU_NRO_BUNDLED := $(CURDIR)/romfs/emu/Vita3K.nro
 EMU_HASH_BUNDLED := $(CURDIR)/romfs/emu/Vita3K.sha256
 
 #---------------------------------------------------------------------------------
+ifeq ($(SWITCH2),1)
+ARCH	:=	-mcpu=cortex-a78c+crypto -mtp=soft -fPIE
+SWITCH2_PORTLIBS := $(DEVKITPRO)/portlibs/switch2
+LIBOUNCE := $(DEVKITPRO)/libounce
+PKG_CONFIG := PKG_CONFIG_PATH= PKG_CONFIG_SYSROOT_DIR= PKG_CONFIG_LIBDIR="$(SWITCH2_PORTLIBS)/lib/pkgconfig:$(PORTLIBS)/lib/pkgconfig" pkg-config
+PKGS	:=	sdl2 SDL2_ttf SDL2_image libcurl egl glesv2
+CFLAGS	:=	`$(PKG_CONFIG) --cflags $(PKGS)` -Wall -Wextra -O3 -DNDEBUG -ffunction-sections \
+			-fno-ident -ffile-prefix-map=$(CURDIR)=. -fmacro-prefix-map=$(CURDIR)=. \
+			$(ARCH) -DVITA3K_NX_VERSION='"$(APP_VERSION)"' $(DEFINES)
+CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -D__SWITCH2__ -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
+CXXFLAGS	:= $(CFLAGS) -std=gnu++17
+ASFLAGS	:=	$(ARCH)
+LDFLAGS	=	-specs=$(LIBOUNCE)/switch.specs $(ARCH) -Wl,-Map,$(CURDIR)/$(TARGET).map \
+			-Wl,--gc-sections -Wl,--build-id=none -Wl,--wrap=writev
+LIBS	:=	$(STORAGE_LIBS) -Wl,--start-group `$(PKG_CONFIG) --static --libs $(PKGS)` -lturbojpeg -lz -lnx -Wl,--end-group
+LIBDIRS	:= $(SWITCH2_PORTLIBS) $(PORTLIBS) $(LIBOUNCE)
+else
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
 SWITCH_VULKAN_SDK ?= $(VITA3K_SWITCH_VULKAN_SDK)
@@ -82,6 +125,7 @@ LIBS	:=	$(STORAGE_LIBS) -Wl,--start-group `$(PKG_CONFIG) --static --libs $(PKGS)
 
 #---------------------------------------------------------------------------------
 LIBDIRS	:= $(SWITCH_VULKAN_SDK) $(PORTLIBS) $(LIBNX)
+endif
 
 #---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
@@ -176,15 +220,17 @@ $(STORAGE_BUILD_STAMP): $(STORAGE_CONFIG_STAMP) $(STORAGE_UASP_INPUTS) storage-d
 	if [ ! -f "$@" ] || [ "$(STORAGE_CONFIG_STAMP)" -nt "$@" ] || \
 	   [ "$(word 1,$(STORAGE_UASP_INPUTS))" -nt "$@" ] || \
 	   [ "$(word 2,$(STORAGE_UASP_INPUTS))" -nt "$@" ] || \
-	   [ ! -f "$(LIBSMB2_ARCHIVE)" ] || [ ! -f "$(LIBUSBHSFS_ARCHIVE)" ] || \
+	   [ ! -f "$(LIBSMB2_ARCHIVE)" ] || \
 	   [ ! -f "$(STORAGE_INCLUDE)/smb2/libsmb2.h" ] || \
-	   [ ! -f "$(STORAGE_INCLUDE)/usbhsfs.h" ]; then \
-		echo "building pinned launcher storage dependencies"; \
-		$(STORAGE_CMAKE) --build "$(STORAGE_BUILD)" --target smb2 libusbhsfs; \
+	   ( [ "$(SWITCH2)" != "1" ] && ( [ ! -f "$(LIBUSBHSFS_ARCHIVE)" ] || [ ! -f "$(STORAGE_INCLUDE)/usbhsfs.h" ] ) ); then \
+		echo "building pinned launcher storage dependencies ($(STORAGE_TARGETS))"; \
+		$(STORAGE_CMAKE) --build "$(STORAGE_BUILD)" --target $(STORAGE_TARGETS); \
 		test -f "$(LIBSMB2_ARCHIVE)"; \
-		test -f "$(LIBUSBHSFS_ARCHIVE)"; \
 		test -f "$(STORAGE_INCLUDE)/smb2/libsmb2.h"; \
-		test -f "$(STORAGE_INCLUDE)/usbhsfs.h"; \
+		if [ "$(SWITCH2)" != "1" ]; then \
+			test -f "$(LIBUSBHSFS_ARCHIVE)"; \
+			test -f "$(STORAGE_INCLUDE)/usbhsfs.h"; \
+		fi; \
 		touch "$@"; \
 	fi
 
@@ -193,12 +239,16 @@ storage-deps: $(STORAGE_BUILD_STAMP)
 # Compile/link validation does not require a bundled emulator or final RomFS.
 launcher-elf: storage-deps
 	@[ -d $(BUILD) ] || mkdir -p $(BUILD)
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile $(OUTPUT).elf
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile SWITCH2=$(SWITCH2) $(OUTPUT).elf
 
 #---------------------------------------------------------------------------------
+ifeq ($(SWITCH2),1)
+all: prepare-romfs storage-deps $(BUILD)
+$(BUILD): prepare-romfs storage-deps
+else
 all: forwarder-assets prepare-romfs storage-deps $(BUILD)
-
 $(BUILD): forwarder-assets prepare-romfs storage-deps
+endif
 
 # The HOME shortcut template carries the same author/version as the launcher.
 # Build it before assembling RomFS so a version or metadata change cannot leave
@@ -221,7 +271,7 @@ $(EMU_HASH_BUNDLED): $(EMU_NRO_BUNDLED)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+	@$(MAKE) --no-print-directory -C $@ -f $(CURDIR)/Makefile SWITCH2=$(SWITCH2)
 
 #---------------------------------------------------------------------------------
 clean:

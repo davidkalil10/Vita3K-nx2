@@ -30,7 +30,7 @@ jobs:
           apt-get update && apt-get install -y --no-install-recommends \
             ninja-build perl python3 pkg-config curl ca-certificates xz-utils bzip2 patch
           for attempt in 1 2 3 4 5; do
-            if dkp-pacman -Sy --noconfirm --needed switch-dev switch-portlibs switch-dav1d switch-bzip2 switch-zlib switch-libzstd switch-libexpat switch-libelf; then
+            if dkp-pacman -Sy --noconfirm --needed switch-dev switch-portlibs switch-dav1d switch-bzip2 switch-zlib switch-libzstd switch-libexpat switch-libelf switch-sdl2 switch-sdl2_ttf switch-sdl2_image switch-curl switch-libjpeg-turbo; then
               break
             fi
             echo "dkp-pacman attempt $attempt failed; retrying in $((attempt * 10))s..."
@@ -48,7 +48,9 @@ jobs:
           path: |
             build-switch2-deps/openssl-4.0.1-switch2
             build-switch2-deps/ffmpeg-install
-          key: vita3k-switch2-deps-v1-${{ hashFiles('scripts/prepare-switch-openssl.sh', 'scripts/build-switch2.sh') }}
+          key: vita3k-switch2-deps-v1-${{ hashFiles('scripts/prepare-switch-openssl.sh') }}
+          restore-keys: |
+            vita3k-switch2-deps-v1-
 
       - name: Build and verify Vita3K-switch2.nro
         run: bash scripts/build-switch2.sh
@@ -57,5 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Vita3K-switch2-nro
-          path: build/switch2/Vita3K-switch2.nro
+          path: |
+            build/switch2/Vita3K-switch2.nro
+            build/switch2/Vita3K-core-switch2.nro
           if-no-files-found: error
