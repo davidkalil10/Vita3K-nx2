@@ -184,6 +184,8 @@ if(NINTENDO_SWITCH2)
 	# Keep Switch 2 bring-up builds fast and within 16 GiB CI runner RAM while
 	# retaining -O3 and clean symbol maps for verify_switch2_package.py.
 	set(USE_LTO OFF CACHE STRING "" FORCE)
+	# Upstream Switch 1 PGO profiles are tied to GCC 16.1.0.
+	set(VITA3K_SWITCH_PGO OFF CACHE BOOL "" FORCE)
 else()
 	# The port is now past early bring-up. Match the Ticu Release configuration and
 	# let GCC optimize across Vita3K's many static libraries; this particularly
