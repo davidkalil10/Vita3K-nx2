@@ -90,7 +90,7 @@ CFLAGS	:=	`$(PKG_CONFIG) --cflags $(PKGS)` -Wall -Wextra -O3 -DNDEBUG -ffunction
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -D__SWITCH2__ -D_GNU_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
 CXXFLAGS	:= $(CFLAGS) -std=gnu++17
 ASFLAGS	:=	$(ARCH)
-LDFLAGS	=	-specs=$(LIBOUNCE)/switch.specs $(ARCH) -Wl,-Map,$(CURDIR)/$(TARGET).map \
+LDFLAGS	=	-specs=$(LIBOUNCE)/switch.specs $(ARCH) -Wl,-Map,$(TOPDIR)/$(TARGET).map \
 			-Wl,--gc-sections -Wl,--build-id=none -Wl,--wrap=writev
 LIBS	:=	$(STORAGE_LIBS) -Wl,--start-group `$(PKG_CONFIG) --static --libs $(PKGS)` -lturbojpeg -lz -lnx -Wl,--end-group
 LIBDIRS	:= $(SWITCH2_PORTLIBS) $(PORTLIBS) $(LIBOUNCE)
